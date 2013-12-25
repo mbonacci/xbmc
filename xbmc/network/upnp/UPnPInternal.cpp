@@ -40,6 +40,11 @@
 #include "ThumbLoader.h"
 #include "utils/URIUtils.h"
 
+// Marin
+#include "settings/Settings.h"
+#include "filesystem/Directory.h"
+#include "utils/LangCodeExpander.h"
+
 using namespace MUSIC_INFO;
 using namespace XFILE;
 
@@ -390,7 +395,33 @@ BuildObject(CFileItem&                    item,
         }
 
         if (upnp_server) {
-            upnp_server->AddSafeResourceUri(object, rooturi, ips, file_path, GetProtocolInfo(item, "http", context));
+			upnp_server->AddSafeResourceUri(object, rooturi, ips, file_path, GetProtocolInfo(item, "http", context));
+
+			// Marin
+			if (item.IsVideoDb() || item.IsVideo()) {
+				// find subtitles
+				CStdString mbp = item.GetVideoInfoTag()->m_strPath;
+				std::string sl = CSettings::Get().GetString("locale.subtitlelanguage");
+				CStdString lc2, lc3;
+				if (!g_LangCodeExpander.ConvertToTwoCharCode(lc2, sl)) lc2 = "";
+				else if (!g_LangCodeExpander.ConvertTwoToThreeCharCode(lc3, lc2)) lc3 = "";
+
+				CFileItemList l;
+				CFileItemPtr sf;
+				CDirectory::GetDirectory(mbp, l, ".srt|.sub");
+				for (int i=0; i<l.GetFileCount(); i++) {
+					if (sf == NULL) sf = l[i];
+					if (!lc2.empty() && (StringUtils::EndsWithNoCase(l[i]->GetPath(), "_" + lc2 + ".srt") || StringUtils::EndsWithNoCase(l[i]->GetPath(), "_" + lc2 + ".sub"))) sf = l[i];
+					if (!lc3.empty() && (StringUtils::EndsWithNoCase(l[i]->GetPath(), "_" + lc3 + ".srt") || StringUtils::EndsWithNoCase(l[i]->GetPath(), "_" + lc3 + ".sub"))) sf = l[i];
+				}
+				
+				if (sf != NULL) {
+					NPT_String mime = "srt";
+					if (StringUtils::EndsWithNoCase(sf->GetPath(), ".sub")) mime = "sub";
+					upnp_server->AddSafeResourceUri(object, rooturi, ips, sf->GetPath(), "http-get:*:text/" + mime + ":*");
+					//upnp_server->AddSafeResourceUri(object, rooturi, ips, "C:\\Users\\Marin\\Documents\\Vuze Downloads\\The Croods 2013 HDRiP XViD UNiQUE\\croods.srt", "http-get:*:text/srt:*");
+				}
+			} 
         }
 
         // if the item is remote, add a direct link to the item
